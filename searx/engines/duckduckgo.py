@@ -359,6 +359,26 @@ def quote_ddg_bangs(query: str) -> str:
     return " ".join(_q)
 
 
+def _accept_language(sxng_locale: str) -> str:
+    """A browser-like Accept-Language header for the SearXNG locale.
+
+    The previous f-string turned ``en-US`` into ``en-US,en-US-EN-US;q=0.7``,
+    which no browser sends and which is an easy bot signal.
+
+    - ``en-US`` -> ``en-US,en;q=0.9``
+    - ``de``    -> ``de,en;q=0.8``
+    - ``all``   -> ``en-US,en;q=0.9``
+    """
+    if not sxng_locale or sxng_locale == "all" or sxng_locale == "auto":
+        return "en-US,en;q=0.9"
+    lang = sxng_locale.split("-")[0]
+    if "-" in sxng_locale:
+        return f"{sxng_locale},{lang};q=0.9"
+    if lang == "en":
+        return "en"
+    return f"{lang},en;q=0.8"
+
+
 def request(query: str, params: "OnlineParams") -> None:
 
     if len(query) >= 500:
@@ -388,9 +408,8 @@ def request(query: str, params: "OnlineParams") -> None:
 
     headers["Referer"] = "https://html.duckduckgo.com/"
 
-    ui_lang = params["searxng_locale"]
     if not headers.get("Accept-Language"):
-        headers["Accept-Language"] = f"{ui_lang},{ui_lang}-{ui_lang.upper()};q=0.7"
+        headers["Accept-Language"] = _accept_language(params["searxng_locale"])
 
     # DDG search form (POST data)
     # ===========================
