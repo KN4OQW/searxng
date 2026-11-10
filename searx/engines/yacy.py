@@ -55,6 +55,7 @@ Implementations
 
 import typing as t
 import random
+import re
 from json import loads
 from urllib.parse import urlencode
 from dateutil import parser
@@ -150,9 +151,11 @@ def request(query, params):
     return params
 
 
-min_term_match: float = 0.5
+min_term_match: float = 0.6
 """TheChance fork: share of the query's words (3+ letters, case-insensitive)
-that must appear in a result's title, snippet or URL. 0 disables the check."""
+that must start a word in a result's title or snippet ("provider" matches
+"providers"). The URL is not counted: "newsroom" or a year in a path made
+unrelated pages pass. 0 disables the check."""
 
 
 def _relevant(query: str, text: str) -> bool:
@@ -160,7 +163,7 @@ def _relevant(query: str, text: str) -> bool:
     if not terms or min_term_match <= 0:
         return True
     text = text.lower()
-    hits = sum(1 for w in terms if w in text)
+    hits = sum(1 for w in terms if re.search(r"(?<!\w)" + re.escape(w), text))
     return hits / len(terms) >= min_term_match
 
 
@@ -211,7 +214,7 @@ def response(resp):
             # TheChance fork: a small local index returns weak matches for
             # queries it knows nothing about; keep only results whose title or
             # snippet carries enough of the query's words.
-            if not _relevant(resp.search_params.get('query', ''), f"{title} {content} {result['link'] or ''}"):
+            if not _relevant(resp.search_params.get('query', ''), f"{title} {content}"):
                 continue
 
             # append result
