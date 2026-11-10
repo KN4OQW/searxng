@@ -1,0 +1,84 @@
+# TheChance Search (search.thechance.family) settings for the KN4OQW fork.
+# Deployed to /etc/searxng/settings.yml on CT 101. The secret key is NOT in this
+# file: it comes from SEARXNG_SECRET in /etc/searxng/searxng.env on the host.
+
+use_default_settings: true
+
+general:
+  debug: false
+  instance_name: "TheChance Search"
+  privacypolicy_url: false
+  # Required since upstream PR #6870: Wikipedia, Wikidata and OpenStreetMap are
+  # disabled without it, and it is sent in their User-Agent per Wikimedia policy.
+  contact_url: "https://search.thechance.family/"
+
+server:
+  base_url: "https://search.thechance.family/"
+  bind_address: "0.0.0.0"
+  port: 8888
+  # Cloudflare and CrowdSec on NPMplus protect the public side; the SearXNG
+  # limiter only produced false 429s behind Cloudflare.
+  limiter: false
+  image_proxy: true
+
+valkey:
+  url: "valkey://localhost:6379/0"
+
+ui:
+  static_use_hash: true
+
+search:
+  safe_search: 2
+  autocomplete: "google"
+  # DuckDuckGo answers every request with a CAPTCHA when the language is "all"
+  # (upstream issue #6779).
+  default_lang: "en-US"
+  formats:
+    - html
+    - json
+  # Upstream defaults are 180 s, which keeps hitting engines that already block us.
+  suspended_times:
+    SearxEngineAccessDenied: 3600
+    SearxEngineCaptcha: 21600
+    SearxEngineTooManyRequests: 1800
+
+plugins:
+  searx.plugins.hostnames.SXNGPlugin:
+    active: true
+  searx.plugins.tracker_url_remover.SXNGPlugin:
+    active: true
+  searx.plugins.ahmia_filter.SXNGPlugin:
+    active: true
+
+# Rank official docs and good technical sources up, low-value sites down.
+hostnames:
+  high_priority:
+    - '(.*\.)?api\.flutter\.dev$'
+    - '(.*\.)?docs\.flutter\.dev$'
+    - '(.*\.)?pub\.dev$'
+    - '(.*\.)?dart\.dev$'
+    - '(.*\.)?riverpod\.dev$'
+    - '(.*\.)?developers\.cloudflare\.com$'
+    - '(.*\.)?pve\.proxmox\.com$'
+    - '(.*\.)?goteleport\.com$'
+    - '(.*\.)?docs\.ansible\.com$'
+    - '(.*\.)?weather\.gov$'
+    - '(.*\.)?docs\.python\.org$'
+    - '(.*\.)?developer\.mozilla\.org$'
+    - '(.*\.)?developer\.android\.com$'
+    - '(.*\.)?developer\.apple\.com$'
+    - '(.*\.)?github\.com$'
+    - '(.*\.)?stackoverflow\.com$'
+    - '(.*\.)?wikipedia\.org$'
+  low_priority:
+    - '(.*\.)?pinterest\.[a-z.]+$'
+    - '(.*\.)?quora\.com$'
+    - '(.*\.)?geeksforgeeks\.org$'
+    - '(.*\.)?w3schools\.com$'
+    - '(.*\.)?medium\.com$'
+
+engines:
+  - name: duckduckgo
+    engine: duckduckgo
+    shortcut: ddg
+    display_error_messages: true
