@@ -61,6 +61,8 @@ engine_cache:
   engines:
     wikipedia: 86400
     wikidata: 86400
+    # Our own index changes only when we crawl; still cheap to ask again.
+    yacy: 3600
 
 plugins:
   searx.plugins.hostnames.SXNGPlugin:
@@ -98,6 +100,20 @@ hostnames:
     - '(.*\.)?medium\.com$'
 
 engines:
+  # Our own index: YaCy on CT 114, crawled from the domains our searches return
+  # (search-gateway seeds it). Local mode searches only our index, so it is
+  # fast; LAN only, plain HTTP.
+  - name: yacy
+    engine: yacy
+    categories: general
+    search_type: text
+    base_url: "http://172.16.50.114:8090"
+    shortcut: ya
+    disabled: false
+    enable_http: true
+    search_mode: local
+    timeout: 2.0
+
   - name: duckduckgo
     engine: duckduckgo
     shortcut: ddg
