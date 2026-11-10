@@ -48,6 +48,11 @@ search:
 # engine is suspended or fails. Counters: HGETALL sxng:ec:stats:<engine>
 engine_cache:
   enabled: true
+  # Streaming results: the HTML page renders after `first_paint` seconds with
+  # what has arrived (cache hits are instant); thechance-stream.js polls for the
+  # engines still running. The JSON API always waits for every engine.
+  stream: true
+  first_paint: 0.6
   ttl: 21600                 # 6 h for general web results
   revalidate_factor: 4
   fallback_max_age: 604800   # 7 days

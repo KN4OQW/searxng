@@ -79,6 +79,16 @@ def enabled() -> bool:
     return bool(_cfg("enabled", False)) and valkeydb.client() is not None
 
 
+def stream_enabled() -> bool:
+    """Streaming results need the cache: it is where late engines leave their
+    answers for the page's follow-up polls."""
+    return enabled() and bool(_cfg("stream", False))
+
+
+def first_paint_seconds() -> float:
+    return float(_cfg("first_paint", 0.6))
+
+
 def ttl_for(engine_name: str, category: str) -> int:
     per_engine: dict[str, int] = _cfg("engines", {}) or {}
     if engine_name in per_engine:
@@ -156,6 +166,53 @@ def try_lock(key: str) -> bool:
         return bool(db.set(key + LOCK_SUFFIX, b"1", nx=True, ex=LOCK_SECONDS))
     except Exception:  # pylint: disable=broad-except
         return False
+
+
+INFLIGHT_SUFFIX = ":inflight"
+
+
+def mark_inflight(key: str, seconds: float) -> bool:
+    """Claim the upstream request for this key. False if another search is
+    already asking the engine the same thing."""
+    db = valkeydb.client()
+    if db is None:
+        return True
+    try:
+        return bool(db.set(key + INFLIGHT_SUFFIX, b"1", nx=True, ex=max(1, int(seconds) + 5)))
+    except Exception:  # pylint: disable=broad-except
+        return True
+
+
+def clear_inflight(key: str) -> None:
+    db = valkeydb.client()
+    if db is None:
+        return
+    try:
+        db.delete(key + INFLIGHT_SUFFIX)
+    except Exception:  # pylint: disable=broad-except
+        pass
+
+
+def is_inflight(key: str) -> bool:
+    db = valkeydb.client()
+    if db is None:
+        return False
+    try:
+        return bool(db.exists(key + INFLIGHT_SUFFIX))
+    except Exception:  # pylint: disable=broad-except
+        return False
+
+
+def wait_for(key: str, timeout: float, poll: float = 0.1) -> CacheEntry | None:
+    """Wait for the search that owns this key's in-flight request to finish,
+    then return what it stored (None if it failed or took too long)."""
+    deadline = time.time() + timeout
+    while time.time() < deadline and is_inflight(key):
+        time.sleep(poll)
+    entry = lookup(key)
+    if entry and entry.age < timeout + 5:
+        return entry
+    return None
 
 
 def count(engine_name: str, kind: str) -> None:

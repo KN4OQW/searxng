@@ -24,7 +24,8 @@
         <td class="response-time">
           <div class="bar-chart-value">{{- response_time | round(1) -}}</div>
           <div class="bar-chart-graph" aria-labelledby="{{engine_name}}_time" aria-hidden="true">
-            <div class="bar-chart-bar bar{{ (100 * response_time / max_response_time) | round | int }}"></div>
+            {#- TheChance fork: every engine can be a cache hit (time 0), so guard the division. -#}
+            <div class="bar-chart-bar bar{{ ((100 * response_time / max_response_time) if max_response_time else 0) | round | int }}"></div>
           </div>
         </td>
       </tr>

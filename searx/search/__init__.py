@@ -57,6 +57,16 @@ class Search:
         self.result_container: ResultContainer = ResultContainer()
         self.start_time: float | None = None
         self.actual_timeout: float | None = None
+        # TheChance fork, streaming results: with `partial` set, the search
+        # returns after `partial_deadline` seconds; engines still running are
+        # listed in `pending_engines` and store their answers in the engine
+        # cache, where the page's follow-up polls pick them up.
+        self.partial: bool = False
+        self.partial_deadline: float = 0.6
+        self.pending_engines: list[str] = []
+        # A follow-up poll only reads the cache: it never sends a request, so an
+        # engine that failed on the first pass is not asked again every poll.
+        self.poll_only: bool = False
 
     def search_external_bang(self) -> bool:
         """Check if there is a external bang.  If yes, update
@@ -161,8 +171,9 @@ class Search:
         params["engine_cache_key"] = key  # pyright: ignore[reportGeneralTypeIssues]
         entry = engine_cache.lookup(key)
         if entry is None:
-            engine_cache.count(engine_name, "miss")
-            return False
+            if not self.poll_only:  # a poll re-reads; only real searches count
+                engine_cache.count(engine_name, "miss")
+            return self._join_inflight(processor, engine_name, key)
 
         ttl = engine_cache.ttl_for(engine_name, category)
         if entry.age < ttl:
@@ -177,8 +188,30 @@ class Search:
                 self._refresh_in_background(engine_name, params)
             return True
 
-        engine_cache.count(engine_name, "miss")
-        return False
+        if not self.poll_only:  # a poll re-reads; only real searches count
+            engine_cache.count(engine_name, "miss")
+        return self._join_inflight(processor, engine_name, key)
+
+    def _join_inflight(self, processor, engine_name: str, key: str) -> bool:
+        """Claim the upstream request, or, if another search is already asking
+        the engine the same thing, use its answer instead of asking twice.
+        Returns True when no request needs to be sent."""
+        if self.poll_only:
+            if engine_cache.is_inflight(key):
+                self.pending_engines.append(engine_name)
+            return True  # polls never ask an engine themselves
+        if engine_cache.mark_inflight(key, processor.engine.timeout):
+            return False  # ours to send
+        if self.partial:
+            # the page will poll again; the other search stores the answer
+            self.pending_engines.append(engine_name)
+            return True
+        entry = engine_cache.wait_for(key, processor.engine.timeout)
+        if entry is not None:
+            self._add_cached(engine_name, entry)
+            engine_cache.count(engine_name, "coalesced")
+            return True
+        return False  # the other request failed or stalled: try ourselves
 
     def _serve_cache_if_suspended(self, engine_name: str, params: RequestParams):
         processor = PROCESSORS.get(engine_name)
@@ -220,12 +253,23 @@ class Search:
             th._engine_name = engine_name
             th.start()
 
+        # Streaming (partial) searches stop waiting at the first-paint deadline,
+        # but the engine threads keep their full timeout: they finish in the
+        # background and store their answers in the engine cache.
+        wait_limit = self.actual_timeout
+        if self.partial:
+            wait_limit = min(wait_limit, self.partial_deadline)
+
         for th in threading.enumerate():  # pylint: disable=invalid-name
             if th.name == search_id:
-                remaining_time = max(0.0, self.actual_timeout - (default_timer() - self.start_time))
+                remaining_time = max(0.0, wait_limit - (default_timer() - self.start_time))
                 th.join(remaining_time)
                 if th.is_alive():
                     th._timeout = True
+                    if self.partial and default_timer() - self.start_time < self.actual_timeout:
+                        th._partial = True
+                        self.pending_engines.append(th._engine_name)
+                        continue
                     self.result_container.add_unresponsive_engine(th._engine_name, 'timeout')
                     PROCESSORS[th._engine_name].logger.error('engine timeout')
 

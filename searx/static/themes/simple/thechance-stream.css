@@ -1,0 +1,50 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* TheChance fork: streaming results status line and arrival fade. */
+
+.tc-stream {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 0.75rem;
+  font-size: 0.85rem;
+  color: var(--color-base-font, #444);
+  opacity: 0.75;
+  transition: opacity 0.4s ease;
+}
+
+.tc-stream.tc-done {
+  opacity: 0.4;
+}
+
+.tc-stream-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--color-result-link-font, #3050ff);
+  animation: tc-pulse 1s ease-in-out infinite;
+}
+
+.tc-stream.tc-done .tc-stream-dot {
+  animation: none;
+}
+
+@keyframes tc-pulse {
+  0%, 100% { opacity: 0.25; }
+  50% { opacity: 1; }
+}
+
+article.result.tc-arrived {
+  animation: tc-arrive 0.5s ease-out;
+}
+
+@keyframes tc-arrive {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tc-stream-dot,
+  article.result.tc-arrived {
+    animation: none;
+  }
+}

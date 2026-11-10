@@ -56,6 +56,7 @@ from searx import (
 
 from searx import infopage
 from searx import limiter
+from searx.search import engine_cache
 from searx.botdetection import link_token, ProxyFix
 
 from searx.data import ENGINE_DESCRIPTIONS
@@ -637,6 +638,14 @@ def rss_xsl():
     )
 
 
+def _stream_url() -> str:
+    """GET URL the results page polls for engines that were still running
+    (TheChance fork). Carries the same form fields, plus partial=1."""
+    fields = [(k, v) for k, v in sxng_request.form.items() if k not in ('partial', 'nostream', 'format')]
+    fields.append(('partial', '1'))
+    return url_for('search') + '?' + urlencode(fields)
+
+
 @app.route('/search', methods=['GET', 'POST'])
 def search():
     """Search query in q and return results.
@@ -674,6 +683,12 @@ def search():
             sxng_request.preferences, sxng_request.form
         )
         search_obj = searx.search.SearchWithPlugins(search_query, sxng_request, sxng_request.user_plugins)
+        # TheChance fork, streaming results: the HTML page is rendered after a
+        # short first-paint deadline and polls for engines still running.
+        if output_format == 'html' and engine_cache.stream_enabled() and sxng_request.form.get('nostream') != '1':
+            search_obj.partial = True
+            search_obj.partial_deadline = engine_cache.first_paint_seconds()
+            search_obj.poll_only = sxng_request.form.get('partial') == '1'
         result_container = search_obj.search()
 
     except SearxParameterException as e:
@@ -790,6 +805,8 @@ def search():
         unresponsive_engines = webutils.get_translated_errors(
             result_container.unresponsive_engines
         ),
+        pending_engines = search_obj.pending_engines,
+        stream_url = _stream_url() if search_obj.pending_engines else '',
         current_locale = sxng_request.preferences.get_value("locale"),
         current_language = selected_locale,
         search_language = match_locale(

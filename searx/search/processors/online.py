@@ -298,6 +298,9 @@ class OnlineProcessor(EngineProcessor):
             self.handle_exception(result_container, e)
             self.logger.exception("exception : {0}".format(e))
         finally:
+            if cache_key:
+                # stored (or failed): searches waiting on this request may go on
+                engine_cache.clear_inflight(cache_key)
             if failed and cache_key:
                 self._serve_cache_fallback(cache_key, result_container)
 

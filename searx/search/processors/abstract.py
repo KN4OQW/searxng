@@ -227,7 +227,13 @@ class EngineProcessor(ABC):
         start_time: float,
         search_results: "list[Result | LegacyResult]|None",
     ):
-        if getattr(threading.current_thread(), '_timeout', False):
+        thread = threading.current_thread()
+        if getattr(thread, '_partial', False):
+            # TheChance fork, streaming: the page stopped waiting on purpose and
+            # the answer is already in the engine cache; not an engine failure.
+            if search_results is not None:
+                self.suspended_status.resume()
+        elif getattr(thread, '_timeout', False):
             # the main thread is not waiting anymore
             self.handle_exception(result_container, 'timeout', False)
         else:

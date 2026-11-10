@@ -58,6 +58,20 @@
       {%- include 'simple/elements/corrections.html' -%}
     {%- endif -%}
 
+    {#- TheChance fork, streaming results: engines still running when the page
+        was rendered. thechance-stream.js polls stream_url and merges their
+        results in as they land in the engine cache. -#}
+    {%- if pending_engines %}
+    <div id="tc-stream" class="tc-stream" role="status" aria-live="polite"
+         data-url="{{ stream_url }}" data-pending="{{ pending_engines|join(',') }}">
+      <span class="tc-stream-dot" aria-hidden="true"></span>
+      <span class="tc-stream-text">{{ _('Still loading') }}: {{ pending_engines|join(', ') }}</span>
+      <noscript><a href="{{ stream_url|replace('partial=1', 'nostream=1') }}">{{ _('Load all results') }}</a></noscript>
+    </div>
+    <link rel="stylesheet" href="{{ url_for('static', filename='thechance-stream.css') }}" type="text/css">
+    <script type="module" src="{{ url_for('static', filename='thechance-stream.js') }}"></script>
+    {%- endif %}
+
     <div id="urls" role="main">
     {% for result in results %}
         {% if result.open_group and not only_template %}<div class="template_group_{{ result['template']|replace('.html', '') }}">{% endif %}
