@@ -150,7 +150,12 @@ def apply_site_prior(results: t.Iterable) -> None:
     if not prior:
         return
     cap = float(_cfg("site_prior_max", 0.3))
+    skip = set(_cfg("site_prior_skip_engines", ["yacy"]) or [])
     for result in results:
+        # A boost for "a site Claude uses" should not lift a result only our own
+        # small index returned: a live engine has to agree it is relevant first.
+        if skip and set(result["engines"]) <= skip:
+            continue
         points = prior.get(_host(result))
         if points:
             result.score *= 1.0 + min(cap, 0.1 * math.log10(1.0 + points))

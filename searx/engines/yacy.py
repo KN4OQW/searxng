@@ -150,6 +150,20 @@ def request(query, params):
     return params
 
 
+min_term_match: float = 0.5
+"""TheChance fork: share of the query's words (3+ letters, case-insensitive)
+that must appear in a result's title, snippet or URL. 0 disables the check."""
+
+
+def _relevant(query: str, text: str) -> bool:
+    terms = {w for w in query.lower().split() if len(w) >= 3 and not w.startswith(('!', ':'))}
+    if not terms or min_term_match <= 0:
+        return True
+    text = text.lower()
+    hits = sum(1 for w in terms if w in text)
+    return hits / len(terms) >= min_term_match
+
+
 def response(resp):
     results = []
 
@@ -192,12 +206,20 @@ def response(resp):
             if 'pubDate' in result:
                 publishedDate = parser.parse(result['pubDate'])
 
+            title = result['title']
+            content = html_to_text(result['description'])
+            # TheChance fork: a small local index returns weak matches for
+            # queries it knows nothing about; keep only results whose title or
+            # snippet carries enough of the query's words.
+            if not _relevant(resp.search_params.get('query', ''), f"{title} {content} {result['link'] or ''}"):
+                continue
+
             # append result
             results.append(
                 {
                     'url': result['link'] or '',
-                    'title': result['title'],
-                    'content': html_to_text(result['description']),
+                    'title': title,
+                    'content': content,
                     'publishedDate': publishedDate,
                 }
             )
