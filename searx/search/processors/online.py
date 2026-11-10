@@ -17,6 +17,7 @@ from searx.exceptions import (
     SearxEngineTooManyRequestsException,
 )
 from searx.metrics.error_recorder import count_error
+from searx.search import engine_cache
 from .abstract import EngineProcessor, RequestParams
 
 if t.TYPE_CHECKING:
@@ -251,10 +252,20 @@ class OnlineProcessor(EngineProcessor):
         timeout_limit: float,
     ):
         self.init_network_in_thread(start_time, timeout_limit)
+        cache_key: str | None = params.get("engine_cache_key")  # pyright: ignore[reportAssignmentType]
+        failed = True
 
         try:
             # send requests and parse the results
             search_results = self._search_basic(query, params)
+            failed = False
+            # Store even when the search already timed out: a slow engine's
+            # answer is then ready for the next identical search.
+            if cache_key and search_results:
+                payload = engine_cache.snapshot(list(search_results))
+                if payload:
+                    engine_cache.store(cache_key, payload)
+                    engine_cache.count(self.engine.name, "store")
             self.extend_container(result_container, start_time, search_results)
         except ssl.SSLError as e:
             # requests timeout (connect or read)
@@ -286,3 +297,13 @@ class OnlineProcessor(EngineProcessor):
         except Exception as e:  # pylint: disable=broad-except
             self.handle_exception(result_container, e)
             self.logger.exception("exception : {0}".format(e))
+        finally:
+            if failed and cache_key:
+                self._serve_cache_fallback(cache_key, result_container)
+
+    def _serve_cache_fallback(self, cache_key: str, result_container: "ResultContainer"):
+        """The engine failed: serve a cached answer if one is young enough."""
+        entry = engine_cache.lookup(cache_key)
+        if entry and entry.age < engine_cache.fallback_max_age():
+            result_container.extend(self.engine.name, entry.results)
+            engine_cache.count(self.engine.name, "fallback")

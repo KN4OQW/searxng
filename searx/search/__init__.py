@@ -22,6 +22,8 @@ from searx.network import initialize as initialize_network, check_network_config
 from searx.results import ResultContainer
 from searx.search.processors import PROCESSORS
 from searx.search.processors.abstract import RequestParams
+from searx.search.processors.online import OnlineProcessor
+from searx.search import engine_cache
 
 if t.TYPE_CHECKING:
     from .models import SearchQuery
@@ -90,13 +92,20 @@ class Search:
                 # engine has been failed and the engine has not been registered.
                 continue
 
-            # stop the request now if the engine is suspend
-            if processor.extend_container_if_suspended(self.result_container):
-                continue
-
             # set default request parameters
             request_params = processor.get_params(self.search_query, engineref.category)
+
+            # stop the request now if the engine is suspend
+            if processor.extend_container_if_suspended(self.result_container):
+                if request_params is not None:
+                    self._serve_cache_if_suspended(engineref.name, request_params)
+                continue
+
             if request_params is None:
+                continue
+
+            # TheChance fork: per-engine result cache, see searx.search.engine_cache
+            if self._serve_from_cache(processor, engineref.name, engineref.category, request_params):
                 continue
 
             counter_inc('engine', engineref.name, 'search', 'count', 'sent')
@@ -134,6 +143,67 @@ class Search:
         )
 
         return requests, actual_timeout
+
+    # --- TheChance fork: per-engine result cache (searx.search.engine_cache) ---
+
+    def _add_cached(self, engine_name: str, entry: engine_cache.CacheEntry):
+        self.result_container.extend(engine_name, entry.results)
+        self.result_container.add_timing(engine_name, 0.0, 0.0)
+
+    def _serve_from_cache(self, processor, engine_name: str, category: str, params: RequestParams) -> bool:
+        """Serve the engine's answer from the cache when it is fresh, or stale
+        within the revalidate window (then refresh it in the background).
+        Returns True when no request needs to be sent."""
+        if not engine_cache.enabled() or not isinstance(processor, OnlineProcessor):
+            return False
+
+        key = engine_cache.make_key(engine_name, self.search_query.query, params)
+        params["engine_cache_key"] = key  # pyright: ignore[reportGeneralTypeIssues]
+        entry = engine_cache.lookup(key)
+        if entry is None:
+            engine_cache.count(engine_name, "miss")
+            return False
+
+        ttl = engine_cache.ttl_for(engine_name, category)
+        if entry.age < ttl:
+            self._add_cached(engine_name, entry)
+            engine_cache.count(engine_name, "hit")
+            return True
+
+        if entry.age < engine_cache.revalidate_until(ttl):
+            self._add_cached(engine_name, entry)
+            engine_cache.count(engine_name, "stale")
+            if engine_cache.try_lock(key):
+                self._refresh_in_background(engine_name, params)
+            return True
+
+        engine_cache.count(engine_name, "miss")
+        return False
+
+    def _serve_cache_if_suspended(self, engine_name: str, params: RequestParams):
+        processor = PROCESSORS.get(engine_name)
+        if not engine_cache.enabled() or not isinstance(processor, OnlineProcessor):
+            return
+        entry = engine_cache.lookup(engine_cache.make_key(engine_name, self.search_query.query, params))
+        if entry and entry.age < engine_cache.fallback_max_age():
+            self._add_cached(engine_name, entry)
+            engine_cache.count(engine_name, "fallback")
+
+    def _refresh_in_background(self, engine_name: str, params: RequestParams):
+        """Ask the engine again without making the user wait; the processor
+        stores the fresh answer in the cache."""
+        processor = PROCESSORS[engine_name]
+        counter_inc('engine', engine_name, 'search', 'count', 'sent')
+        _search = copy_current_request_context(processor.search)
+        th = threading.Thread(  # pylint: disable=invalid-name
+            target=_search,
+            args=(self.search_query.query, params, ResultContainer(), default_timer(), processor.engine.timeout),
+            name="engine-cache-refresh",
+            daemon=True,
+        )
+        th._timeout = False  # pylint: disable=protected-access
+        th._engine_name = engine_name  # pylint: disable=protected-access
+        th.start()
 
     def search_multiple_requests(self, requests: list[tuple[str, str, RequestParams]]):
         # pylint: disable=protected-access

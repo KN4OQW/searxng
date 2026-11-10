@@ -42,6 +42,26 @@ search:
     SearxEngineCaptcha: 21600
     SearxEngineTooManyRequests: 1800
 
+# TheChance fork: per-engine result cache in Valkey (searx/search/engine_cache.py).
+# Fresh for `ttl`, then served stale + refreshed in the background until
+# ttl * revalidate_factor; any answer up to fallback_max_age is served when an
+# engine is suspended or fails. Counters: HGETALL sxng:ec:stats:<engine>
+engine_cache:
+  enabled: true
+  ttl: 21600                 # 6 h for general web results
+  revalidate_factor: 4
+  fallback_max_age: 604800   # 7 days
+  categories:
+    news: 900                # 15 min
+    videos: 21600
+    images: 43200
+    it: 43200
+    science: 86400
+    map: 86400
+  engines:
+    wikipedia: 86400
+    wikidata: 86400
+
 plugins:
   searx.plugins.hostnames.SXNGPlugin:
     active: true
