@@ -66,8 +66,16 @@ def enabled() -> bool:
     return bool(_cfg("enabled", False))
 
 
+def _field(result, name: str):
+    """Read a field from a MainResult (struct, attributes) or a LegacyResult /
+    plain dict (mapping)."""
+    if isinstance(result, dict):
+        return result.get(name)
+    return getattr(result, name, None)
+
+
 def _host(result: "MainResult | LegacyResult") -> str:
-    parsed = getattr(result, "parsed_url", None) or result.get("parsed_url")  # type: ignore[union-attr]
+    parsed = _field(result, "parsed_url")
     netloc = (parsed.netloc if parsed else "") or ""
     return netloc.lower().split(":")[0].removeprefix("www.")
 
@@ -86,7 +94,7 @@ def _freshness(result) -> float:
     boost = float(_cfg("fresh_boost", 0.3))
     if boost <= 0 or days <= 0:
         return 1.0
-    published = result.get("publishedDate")
+    published = _field(result, "publishedDate")
     if not isinstance(published, datetime):
         return 1.0
     news = any("news" in (getattr(searx.engines.engines.get(n), "categories", []) or []) for n in result["engines"])
