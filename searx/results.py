@@ -9,6 +9,7 @@ from threading import RLock
 
 from searx import logger as log
 import searx.engines
+import searx.ranking
 from searx.metrics import histogram_observe, counter_add
 from searx.result_types import Result, LegacyResult, MainResult
 from searx.result_types.answer import AnswerSet, BaseAnswer
@@ -18,6 +19,8 @@ def calculate_score(
     result: MainResult | LegacyResult,
     priority: MainResult.PriorityType,
 ) -> float:
+    if searx.ranking.enabled():  # TheChance fork, see searx/ranking.py
+        return searx.ranking.score(result, priority)
     weight = 1.0
 
     for result_engine in result['engines']:
@@ -190,6 +193,9 @@ class ResultContainer:
             for eng_name in result.engines:
                 counter_add(result.score, 'engine', eng_name, 'score')
 
+        if searx.ranking.enabled():
+            searx.ranking.apply_site_prior(self.main_results_map.values())
+
     def get_ordered_results(self) -> list[MainResult | LegacyResult]:
         """Returns a sorted list of results to be displayed in the main result
         area (:ref:`result types`)."""
@@ -202,6 +208,8 @@ class ResultContainer:
 
         # first pass, sort results by "score" (descanding)
         results = sorted(self.main_results_map.values(), key=lambda x: x.score, reverse=True)
+        if searx.ranking.enabled():
+            results = searx.ranking.diversify(results)
 
         # pass 2 : group results by category and template
         gresults: list[MainResult | LegacyResult] = []

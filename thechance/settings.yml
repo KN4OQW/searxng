@@ -69,6 +69,22 @@ engine_cache:
     # Our own index changes only when we crawl; still cheap to ask again.
     yacy: 3600
 
+# TheChance fork ranking (searx/ranking.py): bounded multipliers instead of
+# upstream's "high priority ignores position, low priority scores zero".
+ranking:
+  enabled: true
+  agreement_bonus: 0.25
+  high_priority_factor: 1.5
+  low_priority_factor: 0.5
+  fresh_days: 7
+  fresh_boost: 0.3
+  # The search gateway's host scoreboard (Valkey DB 1): sites Claude uses.
+  site_prior_url: "valkey://localhost:6379/1"
+  site_prior_key: "gw:dom:score"
+  site_prior_max: 0.3
+  per_host: 2
+  window: 10
+
 plugins:
   searx.plugins.hostnames.SXNGPlugin:
     active: true
@@ -123,3 +139,13 @@ engines:
     engine: duckduckgo
     shortcut: ddg
     display_error_messages: true
+
+  # Ranking weights (merged by name into the upstream definitions). YaCy starts
+  # low: its index is small and young, and it answers first, so without this it
+  # owns the first paint. Raise it as the index grows.
+  - name: yacy
+    weight: 0.6
+  - name: google
+    weight: 1.2
+  - name: brave
+    weight: 1.2
