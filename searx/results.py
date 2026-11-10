@@ -208,8 +208,6 @@ class ResultContainer:
 
         # first pass, sort results by "score" (descanding)
         results = sorted(self.main_results_map.values(), key=lambda x: x.score, reverse=True)
-        if searx.ranking.enabled():
-            results = searx.ranking.diversify(results)
 
         # pass 2 : group results by category and template
         gresults: list[MainResult | LegacyResult] = []
@@ -252,6 +250,11 @@ class ResultContainer:
                 # update categoryIndex
                 categoryPositions[category] = {"index": len(gresults), "count": max_count}
                 continue
+
+        if searx.ranking.enabled():
+            # TheChance fork: after the grouping pass, which would otherwise pull
+            # deferred same-host results back up next to their group.
+            gresults = searx.ranking.diversify(gresults)
 
         self._main_results_sorted = gresults
         return self._main_results_sorted
