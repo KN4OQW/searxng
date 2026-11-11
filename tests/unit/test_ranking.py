@@ -50,3 +50,31 @@ class TestDiversify(SearxTestCase):
         hosts = [r.parsed_url.netloc for r in out]
         self.assertEqual(hosts[:3], ["same.org", "same.org", "other.org"])
         self.assertEqual(len(out), len(results))
+
+
+class TestClickSignals(SearxTestCase):
+
+    def test_sign_verify(self):
+        from searx import clicks
+
+        sig = clicks.sign("https://a.org/x")
+        self.assertTrue(clicks.verify("https://a.org/x", sig))
+        self.assertFalse(clicks.verify("https://a.org/y", sig))
+        self.assertFalse(clicks.verify("https://a.org/x", ""))
+
+    def test_url_signals_adjust_scores(self):
+        from unittest import mock
+        from searx import clicks
+
+        dead = _Scored("https://dead.org/", 1.0)
+        dead.url = "https://dead.org/"
+        bouncy = _Scored("https://bouncy.org/", 1.0)
+        bouncy.url = "https://bouncy.org/"
+        liked = _Scored("https://liked.org/", 1.0)
+        liked.url = "https://liked.org/"
+        fake = {"https://dead.org/": (1, 0, True), "https://bouncy.org/": (10, 10, False), "https://liked.org/": (8, 0, False)}
+        with mock.patch.object(clicks, "enabled", return_value=True), mock.patch.object(clicks, "signals", return_value=fake):
+            ranking.apply_url_signals([dead, bouncy, liked])
+        self.assertLess(dead.score, 0.2)
+        self.assertLess(bouncy.score, 1.0)
+        self.assertGreater(liked.score, 1.0)

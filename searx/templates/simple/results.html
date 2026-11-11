@@ -72,6 +72,7 @@
     <script type="module" src="{{ url_for('static', filename='thechance-stream.js') }}"></script>
     {%- endif %}
 
+    <script type="module" src="{{ url_for('static', filename='thechance-signals.js') }}"></script>
     <div id="urls" role="main">
     {% for result in results %}
         {% if result.open_group and not only_template %}<div class="template_group_{{ result['template']|replace('.html', '') }}">{% endif %}

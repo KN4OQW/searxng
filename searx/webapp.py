@@ -57,6 +57,7 @@ from searx import (
 from searx import infopage
 from searx import limiter
 from searx.search import engine_cache
+import searx.clicks
 from searx.botdetection import link_token, ProxyFix
 
 from searx.data import ENGINE_DESCRIPTIONS
@@ -149,6 +150,8 @@ app.jinja_env.trim_blocks = True
 app.jinja_env.lstrip_blocks = True
 app.jinja_env.add_extension('jinja2.ext.loopcontrols')  # pylint: disable=no-member
 app.jinja_env.filters['group_engines_in_tab'] = group_engines_in_tab  # pylint: disable=no-member
+# TheChance fork: signature that lets a result's click/bounce beacon be accepted.
+app.jinja_env.globals['tc_sign'] = lambda url: searx.clicks.sign(url) if searx.clicks.enabled() else ''  # pylint: disable=no-member
 app.secret_key = settings['server']['secret_key']
 
 
@@ -1123,6 +1126,28 @@ def engine_descriptions():
             result[eng_name] = [eng_obj.about.description, "SearXNG config"]
 
     return jsonify(result)
+
+
+@app.route('/thechance/click', methods=['POST'])
+def thechance_click():
+    """TheChance fork: a result was opened (see searx/clicks.py)."""
+    url = flask.request.form.get('u', '')
+    if searx.clicks.enabled() and searx.clicks.verify(url, flask.request.form.get('s', '')):
+        searx.clicks.record_click(url)
+    return Response(status=204)
+
+
+@app.route('/thechance/bounce', methods=['POST'])
+def thechance_bounce():
+    """TheChance fork: the reader came straight back to the results."""
+    url = flask.request.form.get('u', '')
+    if searx.clicks.enabled() and searx.clicks.verify(url, flask.request.form.get('s', '')):
+        try:
+            dwell = int(flask.request.form.get('d', '-1'))
+        except ValueError:
+            dwell = -1
+        searx.clicks.record_bounce(url, dwell)
+    return Response(status=204)
 
 
 @app.route('/stats', methods=['GET'])

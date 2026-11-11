@@ -195,6 +195,7 @@ class ResultContainer:
 
         if searx.ranking.enabled():
             searx.ranking.apply_site_prior(self.main_results_map.values())
+            searx.ranking.apply_url_signals(self.main_results_map.values())
 
     def get_ordered_results(self) -> list[MainResult | LegacyResult]:
         """Returns a sorted list of results to be displayed in the main result

@@ -85,6 +85,18 @@ ranking:
   per_host: 2
   window: 10
 
+# TheChance fork click signals (searx/clicks.py): result clicks and quick returns
+# are reported by thechance-signals.js; clicked pages are checked in the
+# background. Read back by searx/ranking.py (dead pages x0.01, frequent bounces
+# down to x0.5, clicks up to +20%). Stored in the gateway's Valkey DB 1.
+clicks:
+  enabled: true
+  valkey_url: "valkey://localhost:6379/1"
+  click_host_points: 2
+  bounce_seconds: 15
+  dead_days: 3
+  recheck_hours: 6
+
 plugins:
   searx.plugins.hostnames.SXNGPlugin:
     active: true

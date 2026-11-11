@@ -161,6 +161,31 @@ def apply_site_prior(results: t.Iterable) -> None:
             result.score *= 1.0 + min(cap, 0.1 * math.log10(1.0 + points))
 
 
+def apply_url_signals(results: t.Iterable) -> None:
+    """Clicks and link checks from searx.clicks: dead pages sink, pages people
+    keep bouncing straight back from drop, pages people open rise a little."""
+    import searx.clicks  # pylint: disable=import-outside-toplevel
+
+    if not searx.clicks.enabled():
+        return
+    results = list(results)
+    by_url = {}
+    for result in results:
+        url = _field(result, "url")
+        if url:
+            by_url.setdefault(url, []).append(result)
+    for url, (clicks, bounces, dead) in searx.clicks.signals(list(by_url)).items():
+        factor = 1.0
+        if dead:
+            factor *= float(_cfg("dead_factor", 0.01))
+        if clicks:
+            factor *= 1.0 + min(float(_cfg("click_boost_max", 0.2)), 0.05 * math.log2(1 + clicks))
+        if clicks >= int(_cfg("bounce_min_clicks", 3)):
+            factor *= 1.0 - 0.5 * min(1.0, bounces / clicks)
+        for result in by_url[url]:
+            result.score *= factor
+
+
 def diversify(results: list) -> list:
     """At most `per_host` results per host in the first `window`; the rest keep
     their order right after the window."""
