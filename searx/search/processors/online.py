@@ -18,6 +18,7 @@ from searx.exceptions import (
 )
 from searx.metrics.error_recorder import count_error
 from searx.search import engine_cache
+import searx.clicks
 from .abstract import EngineProcessor, RequestParams
 
 if t.TYPE_CHECKING:
@@ -266,6 +267,10 @@ class OnlineProcessor(EngineProcessor):
                 if payload:
                     engine_cache.store(cache_key, payload)
                     engine_cache.count(self.engine.name, "store")
+                # A fresh answer feeds the crawl scoreboard once, here, even
+                # when it arrives after the page stopped waiting.
+                if searx.clicks.enabled():
+                    searx.clicks.score_results(self.engine.name, search_results)
             self.extend_container(result_container, start_time, search_results)
         except ssl.SSLError as e:
             # requests timeout (connect or read)

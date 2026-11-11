@@ -93,6 +93,10 @@ clicks:
   enabled: true
   valkey_url: "valkey://localhost:6379/1"
   click_host_points: 2
+  # Every real search scores its results' hosts for YaCy crawl seeding
+  # (polls and YaCy's own results excluded). Clicked pages are queued for an
+  # exact-page crawl (gw:crawl:pages, drained by the gateway's seeder).
+  result_host_points: 0.5
   bounce_seconds: 15
   dead_days: 3
   recheck_hours: 6

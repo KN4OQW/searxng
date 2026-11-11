@@ -106,7 +106,44 @@ def record_click(url: str) -> None:
     except Exception as e:  # pylint: disable=broad-except
         log.warning("click not recorded: %s", e)
         return
+    queue_page(url)
     schedule_check(url)
+
+
+PAGE_QUEUE_KEY = "gw:crawl:pages"
+
+
+def queue_page(url: str) -> None:
+    """Ask the gateway's seeder to index this exact page (plus one level of
+    links) in YaCy on its next run."""
+    try:
+        db().zadd(PAGE_QUEUE_KEY, {url: time.time()}, nx=True)
+    except Exception as e:  # pylint: disable=broad-except
+        log.warning("page not queued for crawling: %s", e)
+
+
+def score_results(engine_name: str, results) -> None:
+    """Every real search feeds the crawl scoreboard: +`result_host_points` per
+    result per engine, for the result's host. YaCy's own results do not count,
+    so the index is not steered toward sites it already has."""
+    if engine_name in set(_cfg("score_skip_engines", ["yacy"]) or []):
+        return
+    points = float(_cfg("result_host_points", 0.5))
+    bumps: dict[str, float] = {}
+    for result in results:
+        url = result.get("url") if isinstance(result, dict) else getattr(result, "url", None)
+        host = host_of(url) if url else ""
+        if host and "." in host:
+            bumps[host] = bumps.get(host, 0.0) + points
+    if not bumps:
+        return
+    try:
+        pipe = db().pipeline()
+        for host, inc in bumps.items():
+            pipe.zincrby(HOST_KEY, inc, host)
+        pipe.execute()
+    except Exception as e:  # pylint: disable=broad-except
+        log.warning("results not scored: %s", e)
 
 
 def record_bounce(url: str, dwell_ms: int) -> None:

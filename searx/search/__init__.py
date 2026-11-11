@@ -24,6 +24,7 @@ from searx.search.processors import PROCESSORS
 from searx.search.processors.abstract import RequestParams
 from searx.search.processors.online import OnlineProcessor
 from searx.search import engine_cache
+import searx.clicks
 
 if t.TYPE_CHECKING:
     from .models import SearchQuery
@@ -159,6 +160,10 @@ class Search:
     def _add_cached(self, engine_name: str, entry: engine_cache.CacheEntry):
         self.result_container.extend(engine_name, entry.results)
         self.result_container.add_timing(engine_name, 0.0, 0.0)
+        # A real search served from cache still counts toward what YaCy crawls;
+        # a streaming poll re-reads the same answers and must not count twice.
+        if not self.poll_only and searx.clicks.enabled():
+            searx.clicks.score_results(engine_name, entry.results)
 
     def _serve_from_cache(self, processor, engine_name: str, category: str, params: RequestParams) -> bool:
         """Serve the engine's answer from the cache when it is fresh, or stale
